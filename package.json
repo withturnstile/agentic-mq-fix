@@ -1,0 +1,8 @@
+{
+  "name": "agentic-mq-fix",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test"
+  }
+}
