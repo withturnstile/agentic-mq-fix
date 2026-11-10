@@ -63,7 +63,7 @@ jobs:
         shell: bash
         run: ${{ inputs.setup }}
 
-      - uses: ajhrkr/agentic-mq-fix@v1
+      - uses: withturnstile/agentic-mq-fix@358e1a41468f119a4a764b68e0e10ef3a0c8d764
         with:
           anthropic-api-key: ${{ secrets.anthropic-api-key }}
           model: ${{ inputs.model }}

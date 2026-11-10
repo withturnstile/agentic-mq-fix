@@ -19,7 +19,7 @@ The agent focuses on semantic merge conflicts: two changes that each passed CI o
        types: [known-broken-fix]
    jobs:
      fix:
-       uses: ajhrkr/agentic-mq-fix/.github/workflows/fix.yml@v1
+       uses: withturnstile/agentic-mq-fix/.github/workflows/fix.yml@v1.0.1
        with:
          node-version: "22"     # optional
          setup: npm ci          # optional: install deps so the agent can run tests
@@ -39,7 +39,7 @@ The agent focuses on semantic merge conflicts: two changes that each passed CI o
 
 **Workflow inputs:** `setup`, `node-version`, `python-version`, `runs-on` (for example, a self-hosted runner) and `model` (default `claude-opus-5-5`).
 
-**Custom setup:** if your setup needs more than a shell command, write your own job and use the Action directly. Check out `${{ github.event.client_payload.base_sha }}` with `fetch-depth: 200`, then run `uses: ajhrkr/agentic-mq-fix@v1` with `anthropic-api-key`.
+**Custom setup:** if your setup needs more than a shell command, write your own job and use the Action directly. Check out `${{ github.event.client_payload.base_sha }}` with `fetch-depth: 200`, then run `uses: withturnstile/agentic-mq-fix@v1.0.1` with `anthropic-api-key`.
 
 ## What runs where
 
