@@ -27,10 +27,10 @@ runs:
       shell: bash
       env:
         ANTHROPIC_API_KEY: ${{ inputs.anthropic-api-key }}
-        KBG_PAYLOAD: ${{ toJSON(github.event.client_payload) }}
-        KBG_MODEL: ${{ inputs.model }}
-        KBG_MAX_TURNS: ${{ inputs.max-turns }}
-        KBG_OUT: ${{ runner.temp }}/known-broken-out
+        TU_PAYLOAD: ${{ toJSON(github.event.client_payload) }}
+        TU_MODEL: ${{ inputs.model }}
+        TU_MAX_TURNS: ${{ inputs.max-turns }}
+        TU_OUT: ${{ runner.temp }}/known-broken-out
       run: node "$RUNNER_TEMP/known-broken-agent/fix.mjs"
 
     - name: Upload the result for known-broken-gate
