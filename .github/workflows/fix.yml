@@ -145,7 +145,8 @@ jobs:
         shell: bash
         run: ${{ inputs.setup }}
 
-      - uses: withturnstile/agentic-mq-fix@v2
+      - id: agent
+        uses: withturnstile/agentic-mq-fix@v2
         with:
           session-token: ${{ steps.session.outputs.token }}
           base-url: ${{ inputs.turnstile-url }}
@@ -153,9 +154,30 @@ jobs:
           max-turns: ${{ steps.session.outputs.max_turns }}
           max-budget-usd: ${{ steps.session.outputs.max_budget_usd }}
 
-      # The agent step uploads its own result; this covers a session that couldn't be opened.
-      - name: Upload the session error for Turnstile
-        if: failure() && steps.session.outcome == 'failure' && github.event.client_payload.attempt_id
+      # The agent step uploads its own result. When something failed before it ran (the session,
+      # checkout or setup), leave an error result so Turnstile closes the attempt now instead of
+      # waiting for its timeout.
+      - name: Record the failure for Turnstile
+        id: failed-early
+        if: failure() && github.event.client_payload.attempt_id && (steps.agent.outcome == '' || steps.agent.outcome == 'skipped')
+        shell: node {0}
+        env:
+          KBG_PAYLOAD: ${{ toJSON(github.event.client_payload) }}
+          KBG_OUT: ${{ runner.temp }}/known-broken-out
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          const fs = require("node:fs");
+          const path = require("node:path");
+          const file = path.join(process.env.KBG_OUT, "result.json");
+          // The session step writes its own, more specific error.
+          if (fs.existsSync(file)) process.exit(0);
+          const payload = JSON.parse(process.env.KBG_PAYLOAD);
+          fs.mkdirSync(process.env.KBG_OUT, { recursive: true });
+          const error = `checkout or dependency setup failed before the agent ran; see ${process.env.RUN_URL}`;
+          fs.writeFileSync(file, JSON.stringify({ attempt_id: payload.attempt_id, token: payload.token, outcome: "error", summary: "", cost_usd: null, error }, null, 2));
+
+      - name: Upload the error for Turnstile
+        if: failure() && steps.failed-early.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
           name: known-broken-fix-${{ github.event.client_payload.attempt_id }}
