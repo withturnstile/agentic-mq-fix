@@ -1,6 +1,9 @@
-# Reusable workflow that agentic-mq (known-broken-gate) dispatches when a failure is confirmed
-# broken on the default branch. Call it from a stub in your repo; see README.md.
-name: agentic-mq fix
+# Reusable workflow that Turnstile dispatches when a failure is confirmed broken on the default
+# branch. Call it from a stub in your repo; see README.md.
+#
+# Model calls go through Turnstile's proxy, so the repo needs no Anthropic key. The run proves who
+# it is with its GitHub OIDC token and gets a session token for this one fix attempt.
+name: Turnstile fix
 
 on:
   workflow_call:
@@ -21,17 +24,15 @@ on:
         description: Runner label.
         type: string
         default: ubuntu-latest
-      model:
-        description: Claude model for the agent.
+      turnstile-url:
+        description: Turnstile server the run gets its fix session and model access from.
         type: string
-        default: claude-opus-5-5
-    secrets:
-      anthropic-api-key:
-        description: Anthropic API key the agent runs with.
-        required: true
+        default: https://app.withturnstile.com
 
 permissions:
   contents: read
+  # Only lets the run prove its identity to Turnstile with a GitHub OIDC token.
+  id-token: write
 
 jobs:
   fix:
@@ -41,6 +42,87 @@ jobs:
       group: agentic-mq-fix-${{ github.repository }}
       cancel-in-progress: false
     steps:
+      # First, before checkout and setup: anyone who can read the repo can see the dispatch token
+      # once this run exists, so claim the attempt as early as possible. The session token is
+      # passed on only as a step output, never through GITHUB_ENV, so setup commands don't see it.
+      - name: Open a Turnstile fix session
+        id: session
+        shell: node {0}
+        env:
+          TURNSTILE_URL: ${{ inputs.turnstile-url }}
+          KBG_PAYLOAD: ${{ toJSON(github.event.client_payload) }}
+          KBG_OUT: ${{ runner.temp }}/known-broken-out
+        run: |
+          const fs = require("node:fs");
+          const path = require("node:path");
+          const env = process.env;
+          const server = String(env.TURNSTILE_URL || "").replace(/\/+$/, "");
+          let payload = null;
+          try { payload = JSON.parse(env.KBG_PAYLOAD || "null"); } catch {}
+
+          // Like fix.mjs, always leave a result behind on failure so Turnstile can close the attempt.
+          function fail(message) {
+            console.log(`::error title=Turnstile fix session::${message.replace(/%/g, "%25").replace(/\r/g, "%0D").replace(/\n/g, "%0A")}`);
+            if (payload?.attempt_id && payload.token && env.KBG_OUT) {
+              fs.mkdirSync(env.KBG_OUT, { recursive: true });
+              const result = { attempt_id: payload.attempt_id, token: payload.token, outcome: "error", summary: "", cost_usd: null, error: message };
+              fs.writeFileSync(path.join(env.KBG_OUT, "result.json"), JSON.stringify(result, null, 2));
+            }
+            process.exit(1);
+          }
+
+          async function request(url, init, what) {
+            for (let i = 1; ; i++) {
+              try {
+                const res = await fetch(url, { ...init, signal: AbortSignal.timeout(30_000) });
+                if ((res.status < 500 && res.status !== 429) || i === 3) return res;
+                console.log(`${what}: HTTP ${res.status}, retrying`);
+              } catch (err) {
+                if (i === 3) fail(`${what} failed: ${err?.message ?? err}`);
+                console.log(`${what}: ${err?.message ?? err}, retrying`);
+              }
+              await new Promise((r) => setTimeout(r, 2000 * i));
+            }
+          }
+
+          (async () => {
+            if (!Number.isSafeInteger(payload?.attempt_id) || typeof payload?.token !== "string" || !payload.token) {
+              fail("no Turnstile dispatch payload: this workflow only runs from Turnstile's repository_dispatch (known-broken-fix)");
+            }
+            if (!/^https?:\/\//.test(server)) fail(`turnstile-url must be an http(s) URL, got "${env.TURNSTILE_URL}"`);
+            if (!env.ACTIONS_ID_TOKEN_REQUEST_URL || !env.ACTIONS_ID_TOKEN_REQUEST_TOKEN) {
+              fail("this run can't get a GitHub OIDC token: add `permissions: id-token: write` to the job (or workflow) that calls withturnstile/agentic-mq-fix, see its README");
+            }
+
+            const oidcRes = await request(`${env.ACTIONS_ID_TOKEN_REQUEST_URL}&audience=turnstile-fix`, { headers: { authorization: `bearer ${env.ACTIONS_ID_TOKEN_REQUEST_TOKEN}` } }, "getting the GitHub OIDC token");
+            const oidc = oidcRes.ok ? (await oidcRes.json().catch(() => null))?.value : null;
+            if (!oidc) fail(`getting the GitHub OIDC token failed (HTTP ${oidcRes.status})`);
+            console.log(`::add-mask::${oidc}`);
+
+            const res = await request(`${server}/api/fix/session`, {
+              method: "POST",
+              headers: { authorization: `Bearer ${oidc}`, "content-type": "application/json" },
+              body: JSON.stringify({ attempt_id: payload.attempt_id, token: payload.token }),
+            }, "opening the fix session");
+            const text = await res.text();
+            let body = null;
+            try { body = JSON.parse(text); } catch {}
+            if (typeof body?.token === "string" && body.token) console.log(`::add-mask::${body.token}`);
+            if (!res.ok) {
+              const reason = body?.error?.message ?? (typeof body?.error === "string" ? body.error : null) ?? (text.trim().slice(0, 500) || "no response body");
+              fail(`Turnstile couldn't open the fix session (HTTP ${res.status} from ${server}/api/fix/session): ${reason}`);
+            }
+
+            const ok = (v) => typeof v === "string" && v !== "" && !/[\r\n]/.test(v);
+            const turns = Number(body?.max_turns);
+            const budget = Number(body?.max_budget_usd);
+            if (!ok(body?.token) || !ok(body?.model) || !(turns > 0) || !(budget > 0)) {
+              fail(`unexpected fix session response from ${server}/api/fix/session`);
+            }
+            fs.appendFileSync(env.GITHUB_OUTPUT, `token=${body.token}\nmodel=${body.model}\nmax_turns=${Math.floor(turns)}\nmax_budget_usd=${budget}\n`);
+            console.log(`Fix session open for attempt ${payload.attempt_id}: ${body.model}, up to ${Math.floor(turns)} turns and $${budget.toFixed(2)}, until ${body.expires_at}.`);
+          })().catch((err) => fail(`opening the fix session failed: ${err?.message ?? err}`));
+
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.client_payload.base_sha }}
@@ -63,7 +145,20 @@ jobs:
         shell: bash
         run: ${{ inputs.setup }}
 
-      - uses: ajhrkr/agentic-mq-fix@v1
+      - uses: withturnstile/agentic-mq-fix@v2
         with:
-          anthropic-api-key: ${{ secrets.anthropic-api-key }}
-          model: ${{ inputs.model }}
+          session-token: ${{ steps.session.outputs.token }}
+          base-url: ${{ inputs.turnstile-url }}
+          model: ${{ steps.session.outputs.model }}
+          max-turns: ${{ steps.session.outputs.max_turns }}
+          max-budget-usd: ${{ steps.session.outputs.max_budget_usd }}
+
+      # The agent step uploads its own result; this covers a session that couldn't be opened.
+      - name: Upload the session error for Turnstile
+        if: failure() && steps.session.outcome == 'failure' && github.event.client_payload.attempt_id
+        uses: actions/upload-artifact@v4
+        with:
+          name: known-broken-fix-${{ github.event.client_payload.attempt_id }}
+          path: ${{ runner.temp }}/known-broken-out/
+          if-no-files-found: ignore
+          retention-days: 7

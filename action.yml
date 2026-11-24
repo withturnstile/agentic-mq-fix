@@ -1,15 +1,21 @@
-name: agentic-mq fix agent
-description: Runs a Claude agent to fix failures known-broken-gate confirmed on the default branch, and uploads the patch for the app to open as a pull request.
+name: Turnstile fix agent
+description: Runs a Claude agent to fix failures Turnstile confirmed on the default branch, and uploads the patch for Turnstile to open as a pull request. Model calls go through Turnstile's proxy.
 inputs:
-  anthropic-api-key:
-    description: Anthropic API key the agent runs with.
+  session-token:
+    description: Turnstile fix session token from POST /api/fix/session. Only the reusable workflow (.github/workflows/fix.yml) can get one.
     required: true
+  base-url:
+    description: Turnstile server. Model calls go to {base-url}/anthropic.
+    default: https://app.withturnstile.com
   model:
-    description: Claude model for the agent.
-    default: claude-opus-5-5
+    description: Claude model for the agent. Use the one the fix session returned; the proxy refuses any other.
+    required: true
   max-turns:
-    description: Upper bound on agent turns. The spend limit comes from fix.max_budget_usd in .github/known-broken.yml.
+    description: Upper bound on agent turns, from the fix session.
     default: "60"
+  max-budget-usd:
+    description: Spend limit for the agent, from the fix session. Empty falls back to the dispatch payload's max_budget_usd. Turnstile also enforces its own limit on the server.
+    default: ""
 runs:
   using: composite
   steps:
@@ -26,14 +32,33 @@ runs:
     - name: Run the agent
       shell: bash
       env:
-        ANTHROPIC_API_KEY: ${{ inputs.anthropic-api-key }}
+        # Turnstile's proxy serves only /v1/messages and /v1/messages/count_tokens, for one model.
+        TURNSTILE_URL: ${{ inputs.base-url }}
+        ANTHROPIC_API_KEY: ${{ inputs.session-token }}
+        # Every model alias, background task and subagent uses the session's model, the only one
+        # the proxy accepts.
+        ANTHROPIC_DEFAULT_OPUS_MODEL: ${{ inputs.model }}
+        ANTHROPIC_DEFAULT_SONNET_MODEL: ${{ inputs.model }}
+        ANTHROPIC_DEFAULT_HAIKU_MODEL: ${{ inputs.model }}
+        ANTHROPIC_SMALL_FAST_MODEL: ${{ inputs.model }}
+        CLAUDE_CODE_SUBAGENT_MODEL: ${{ inputs.model }}
+        # No telemetry, error reporting, auto-updates or other calls outside the model API.
+        CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1"
+        DISABLE_TELEMETRY: "1"
+        DISABLE_ERROR_REPORTING: "1"
+        DISABLE_AUTOUPDATER: "1"
+        DISABLE_BUG_COMMAND: "1"
+        CLAUDE_CODE_DISABLE_OFFICIAL_MARKETPLACE_AUTOINSTALL: "1"
         KBG_PAYLOAD: ${{ toJSON(github.event.client_payload) }}
         KBG_MODEL: ${{ inputs.model }}
         KBG_MAX_TURNS: ${{ inputs.max-turns }}
+        KBG_MAX_BUDGET_USD: ${{ inputs.max-budget-usd }}
         KBG_OUT: ${{ runner.temp }}/known-broken-out
-      run: node "$RUNNER_TEMP/known-broken-agent/fix.mjs"
+      run: |
+        export ANTHROPIC_BASE_URL="${TURNSTILE_URL%/}/anthropic"
+        node "$RUNNER_TEMP/known-broken-agent/fix.mjs"
 
-    - name: Upload the result for known-broken-gate
+    - name: Upload the result for Turnstile
       if: always()
       uses: actions/upload-artifact@v4
       with:
