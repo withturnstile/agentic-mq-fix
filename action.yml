@@ -49,11 +49,11 @@ runs:
         DISABLE_AUTOUPDATER: "1"
         DISABLE_BUG_COMMAND: "1"
         CLAUDE_CODE_DISABLE_OFFICIAL_MARKETPLACE_AUTOINSTALL: "1"
-        KBG_PAYLOAD: ${{ toJSON(github.event.client_payload) }}
-        KBG_MODEL: ${{ inputs.model }}
-        KBG_MAX_TURNS: ${{ inputs.max-turns }}
-        KBG_MAX_BUDGET_USD: ${{ inputs.max-budget-usd }}
-        KBG_OUT: ${{ runner.temp }}/known-broken-out
+        TU_PAYLOAD: ${{ toJSON(github.event.client_payload) }}
+        TU_MODEL: ${{ inputs.model }}
+        TU_MAX_TURNS: ${{ inputs.max-turns }}
+        TU_MAX_BUDGET_USD: ${{ inputs.max-budget-usd }}
+        TU_OUT: ${{ runner.temp }}/known-broken-out
       run: |
         export ANTHROPIC_BASE_URL="${TURNSTILE_URL%/}/anthropic"
         node "$RUNNER_TEMP/known-broken-agent/fix.mjs"

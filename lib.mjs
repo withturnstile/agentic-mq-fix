@@ -12,13 +12,13 @@ const positive = (v) => {
 
 /**
  * The model and limits the agent runs with: the Turnstile fix session's (passed by action.yml as
- * KBG_MODEL, KBG_MAX_TURNS and KBG_MAX_BUDGET_USD), falling back to the dispatch payload's budget.
+ * TU_MODEL, TU_MAX_TURNS and TU_MAX_BUDGET_USD), falling back to the dispatch payload's budget.
  */
 export function agentLimits(env, payload) {
   return {
-    model: env.KBG_MODEL || DEFAULT_MODEL,
-    maxTurns: Math.floor(positive(env.KBG_MAX_TURNS) ?? DEFAULT_MAX_TURNS),
-    maxBudgetUsd: positive(env.KBG_MAX_BUDGET_USD) ?? payload?.max_budget_usd,
+    model: env.TU_MODEL || DEFAULT_MODEL,
+    maxTurns: Math.floor(positive(env.TU_MAX_TURNS) ?? DEFAULT_MAX_TURNS),
+    maxBudgetUsd: positive(env.TU_MAX_BUDGET_USD) ?? payload?.max_budget_usd,
   };
 }
 

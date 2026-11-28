@@ -1,4 +1,4 @@
-// Runs the fix agent in the checked-out repo and writes result.json + fix.patch to KBG_OUT.
+// Runs the fix agent in the checked-out repo and writes result.json + fix.patch to TU_OUT.
 // Always writes result.json, even on failure, so the app can close out the attempt.
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import { execFileSync } from "node:child_process";
@@ -6,8 +6,8 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { agentLimits, ALLOWED_TOOLS, buildPrompt, checkTool } from "./lib.mjs";
 
-const payload = JSON.parse(process.env.KBG_PAYLOAD ?? "null");
-const out = process.env.KBG_OUT;
+const payload = JSON.parse(process.env.TU_PAYLOAD ?? "null");
+const out = process.env.TU_OUT;
 const root = path.resolve(process.env.GITHUB_WORKSPACE ?? process.cwd());
 const git = (...args) => execFileSync("git", args, { cwd: root, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
 

@@ -50,23 +50,23 @@ jobs:
         shell: node {0}
         env:
           TURNSTILE_URL: ${{ inputs.turnstile-url }}
-          KBG_PAYLOAD: ${{ toJSON(github.event.client_payload) }}
-          KBG_OUT: ${{ runner.temp }}/known-broken-out
+          TU_PAYLOAD: ${{ toJSON(github.event.client_payload) }}
+          TU_OUT: ${{ runner.temp }}/known-broken-out
         run: |
           const fs = require("node:fs");
           const path = require("node:path");
           const env = process.env;
           const server = String(env.TURNSTILE_URL || "").replace(/\/+$/, "");
           let payload = null;
-          try { payload = JSON.parse(env.KBG_PAYLOAD || "null"); } catch {}
+          try { payload = JSON.parse(env.TU_PAYLOAD || "null"); } catch {}
 
           // Like fix.mjs, always leave a result behind on failure so Turnstile can close the attempt.
           function fail(message) {
             console.log(`::error title=Turnstile fix session::${message.replace(/%/g, "%25").replace(/\r/g, "%0D").replace(/\n/g, "%0A")}`);
-            if (payload?.attempt_id && payload.token && env.KBG_OUT) {
-              fs.mkdirSync(env.KBG_OUT, { recursive: true });
+            if (payload?.attempt_id && payload.token && env.TU_OUT) {
+              fs.mkdirSync(env.TU_OUT, { recursive: true });
               const result = { attempt_id: payload.attempt_id, token: payload.token, outcome: "error", summary: "", cost_usd: null, error: message };
-              fs.writeFileSync(path.join(env.KBG_OUT, "result.json"), JSON.stringify(result, null, 2));
+              fs.writeFileSync(path.join(env.TU_OUT, "result.json"), JSON.stringify(result, null, 2));
             }
             process.exit(1);
           }
@@ -162,17 +162,17 @@ jobs:
         if: failure() && github.event.client_payload.attempt_id && (steps.agent.outcome == '' || steps.agent.outcome == 'skipped')
         shell: node {0}
         env:
-          KBG_PAYLOAD: ${{ toJSON(github.event.client_payload) }}
-          KBG_OUT: ${{ runner.temp }}/known-broken-out
+          TU_PAYLOAD: ${{ toJSON(github.event.client_payload) }}
+          TU_OUT: ${{ runner.temp }}/known-broken-out
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           const fs = require("node:fs");
           const path = require("node:path");
-          const file = path.join(process.env.KBG_OUT, "result.json");
+          const file = path.join(process.env.TU_OUT, "result.json");
           // The session step writes its own, more specific error.
           if (fs.existsSync(file)) process.exit(0);
-          const payload = JSON.parse(process.env.KBG_PAYLOAD);
-          fs.mkdirSync(process.env.KBG_OUT, { recursive: true });
+          const payload = JSON.parse(process.env.TU_PAYLOAD);
+          fs.mkdirSync(process.env.TU_OUT, { recursive: true });
           const error = `checkout or dependency setup failed before the agent ran; see ${process.env.RUN_URL}`;
           fs.writeFileSync(file, JSON.stringify({ attempt_id: payload.attempt_id, token: payload.token, outcome: "error", summary: "", cost_usd: null, error }, null, 2));
 
