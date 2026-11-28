@@ -4,7 +4,7 @@ import { query } from "@anthropic-ai/claude-agent-sdk";
 import { execFileSync } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { ALLOWED_TOOLS, buildPrompt, checkTool } from "./lib.mjs";
+import { agentLimits, ALLOWED_TOOLS, buildPrompt, checkTool } from "./lib.mjs";
 
 const payload = JSON.parse(process.env.TU_PAYLOAD ?? "null");
 const out = process.env.TU_OUT;
@@ -40,9 +40,7 @@ async function main() {
     prompt: buildPrompt(payload),
     options: {
       cwd: root,
-      model: process.env.TU_MODEL || "claude-opus-5-5",
-      maxTurns: Number(process.env.TU_MAX_TURNS || 60),
-      maxBudgetUsd: payload.max_budget_usd,
+      ...agentLimits(process.env, payload),
       permissionMode: "dontAsk",
       allowedTools: ALLOWED_TOOLS,
       disallowedTools: ["WebFetch", "WebSearch"],

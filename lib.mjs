@@ -1,5 +1,26 @@
-// Pure helpers for the fix agent (fix.mjs): the prompt and the tool-use guard.
+// Pure helpers for the fix agent (fix.mjs): the prompt, the tool-use guard and the agent's limits.
 import path from "node:path";
+
+export const DEFAULT_MODEL = "claude-opus-5-5";
+export const DEFAULT_MAX_TURNS = 60;
+
+const positive = (v) => {
+  if (v == null || v === "") return undefined;
+  const n = Number(v);
+  return Number.isFinite(n) && n > 0 ? n : undefined;
+};
+
+/**
+ * The model and limits the agent runs with: the Turnstile fix session's (passed by action.yml as
+ * TU_MODEL, TU_MAX_TURNS and TU_MAX_BUDGET_USD), falling back to the dispatch payload's budget.
+ */
+export function agentLimits(env, payload) {
+  return {
+    model: env.TU_MODEL || DEFAULT_MODEL,
+    maxTurns: Math.floor(positive(env.TU_MAX_TURNS) ?? DEFAULT_MAX_TURNS),
+    maxBudgetUsd: positive(env.TU_MAX_BUDGET_USD) ?? payload?.max_budget_usd,
+  };
+}
 
 /** Tools the agent may use. Bash is allowed: this runs on the repo's own CI runner. */
 export const ALLOWED_TOOLS = ["Read", "Edit", "Write", "Glob", "Grep", "Bash", "TodoWrite"];

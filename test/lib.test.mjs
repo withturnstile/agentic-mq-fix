@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { buildPrompt, checkTool } from "../lib.mjs";
+import { agentLimits, buildPrompt, checkTool } from "../lib.mjs";
 
 const root = "/work/repo";
 
@@ -39,5 +39,22 @@ describe("prompt", () => {
     assert.match(prompt, /Started failing with: bbb \(PR #12: Rename computeTotal to sum\)/);
     assert.match(prompt, /git log --oneline aaa\.\.ccc/);
     assert.match(prompt, /semantic merge conflicts/);
+  });
+});
+
+describe("agent limits", () => {
+  it("uses the Turnstile session's model, turns and budget", () => {
+    const env = { TU_MODEL: "claude-opus-5-5", TU_MAX_TURNS: "40", TU_MAX_BUDGET_USD: "2.5" };
+    assert.deepEqual(agentLimits(env, { max_budget_usd: 5 }), { model: "claude-opus-5-5", maxTurns: 40, maxBudgetUsd: 2.5 });
+  });
+
+  it("falls back to the payload's budget and the default model and turns", () => {
+    assert.deepEqual(agentLimits({}, { max_budget_usd: 5 }), { model: "claude-opus-5-5", maxTurns: 60, maxBudgetUsd: 5 });
+    assert.deepEqual(agentLimits({ TU_MODEL: "", TU_MAX_TURNS: "", TU_MAX_BUDGET_USD: "" }, { max_budget_usd: 3 }), { model: "claude-opus-5-5", maxTurns: 60, maxBudgetUsd: 3 });
+    for (const bad of ["0", "-1", "abc", "NaN"]) {
+      assert.equal(agentLimits({ TU_MAX_BUDGET_USD: bad, TU_MAX_TURNS: bad }, { max_budget_usd: 4 }).maxBudgetUsd, 4);
+      assert.equal(agentLimits({ TU_MAX_TURNS: bad }, {}).maxTurns, 60);
+    }
+    assert.equal(agentLimits({}, null).maxBudgetUsd, undefined);
   });
 });
